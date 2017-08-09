@@ -1,6 +1,7 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Microsoft.AspNetCore.SignalR
@@ -54,11 +55,27 @@ namespace Microsoft.AspNetCore.SignalR
         }
     }
 
+    public class AllClientsExceptProxy<THub> : IClientProxy
+    {
+        private readonly HubLifetimeManager<THub> _lifetimeManager;
+        private readonly List<string> _excludedIds;
+
+        public AllClientsExceptProxy(HubLifetimeManager<THub> lifetimeManager, List<string> excludedIds)
+        {
+            _lifetimeManager = lifetimeManager;
+            _excludedIds = excludedIds;
+        }
+
+        public Task InvokeAsync(string method, params object[] args)
+        {
+            return _lifetimeManager.InvokeAllExceptAsync(_excludedIds, method, args);
+        }
+    }
+
     public class SingleClientProxy<THub> : IClientProxy
     {
         private readonly string _connectionId;
         private readonly HubLifetimeManager<THub> _lifetimeManager;
-
 
         public SingleClientProxy(HubLifetimeManager<THub> lifetimeManager, string connectionId)
         {

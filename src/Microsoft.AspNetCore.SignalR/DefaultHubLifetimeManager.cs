@@ -140,6 +140,14 @@ namespace Microsoft.AspNetCore.SignalR
             return invocationId.ToString();
         }
 
+        public override Task InvokeAllExceptAsync(List<string> excludedIds, string methodName, object[] args)
+        {
+            return InvokeAllWhere(methodName, args, connection =>
+            {
+                return !excludedIds.Contains(connection.ConnectionId);
+            });
+        }
+
         private interface IHubGroupsFeature
         {
             HashSet<string> Groups { get; }

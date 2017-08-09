@@ -478,6 +478,55 @@ namespace Microsoft.AspNetCore.SignalR.Tests
 
         [Theory]
         [MemberData(nameof(HubTypes))]
+        public async Task SendToAllExcept(Type hubType)
+        {
+            var serviceProvider = CreateServiceProvider();
+
+            dynamic endPoint = serviceProvider.GetService(GetEndPointType(hubType));
+
+            using (var firstClient = new TestClient())
+            using (var secondClient = new TestClient())
+            using (var thirdClient = new TestClient())
+            {
+                Task firstEndPointTask = endPoint.OnConnectedAsync(firstClient.Connection);
+                Task secondEndPointTask = endPoint.OnConnectedAsync(secondClient.Connection);
+                Task thirdEndPointTask = endPoint.OnConnectedAsync(thirdClient.Connection);
+
+
+                await Task.WhenAll(firstClient.Connected, secondClient.Connected).OrTimeout();
+
+                var excludeSecondClientId = new List<string>();
+                excludeSecondClientId.Add(secondClient.Connection.ConnectionId);
+
+                var excludeThirdClientId = new List<string>();
+                excludeThirdClientId.Add(thirdClient.Connection.ConnectionId);
+
+                await firstClient.SendInvocationAsync("SendToAllExcept", excludeSecondClientId, "To third").OrTimeout();
+                await firstClient.SendInvocationAsync("SendToAllExcept", excludeThirdClientId, "To second").OrTimeout();
+
+
+                foreach (var result in await Task.WhenAll(
+                    firstClient.Read(),
+                    secondClient.Read()).OrTimeout())
+                {
+                    var invocation = Assert.IsType<InvocationMessage>(result);
+                    Assert.Equal("Broadcast", invocation.Target);
+                    Assert.Equal(1, invocation.Arguments.Length);
+                    Assert.Equal("test", invocation.Arguments[0]);
+                }
+
+                // kill the connections
+                firstClient.Dispose();
+                secondClient.Dispose();
+                thirdClient.Dispose();
+
+                await Task.WhenAll(firstEndPointTask, secondEndPointTask).OrTimeout();
+            }
+        }
+
+
+        [Theory]
+        [MemberData(nameof(HubTypes))]
         public async Task HubsCanAddAndSendToGroup(Type hubType)
         {
             var serviceProvider = CreateServiceProvider();
@@ -944,6 +993,11 @@ namespace Microsoft.AspNetCore.SignalR.Tests
             [Authorize("test")]
             public void AuthMethod()
             {
+            }
+
+            public Task SendToAllExcept(List<string> excludedIds, string message)
+            {
+                return Clients.AllExcept(excludedIds).InvokeAsync("Send", message);
             }
         }
 

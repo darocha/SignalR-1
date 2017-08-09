@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.SignalR.Redis;
 using System.Linq;
+using System.Collections.Generic;
 
 namespace ChatSample
 {
@@ -139,6 +140,11 @@ namespace ChatSample
         public override Task InvokeAllAsync(string methodName, object[] args)
         {
             return _wrappedHubLifetimeManager.InvokeAllAsync(methodName, args);
+        }
+
+        public override Task InvokeAllExceptAsync(List<string> excludedIds, string methodName, object[] args)
+        {
+            return _wrappedHubLifetimeManager.InvokeAllExceptAsync( excludedIds, methodName, args);
         }
 
         public override Task InvokeConnectionAsync(string connectionId, string methodName, object[] args)

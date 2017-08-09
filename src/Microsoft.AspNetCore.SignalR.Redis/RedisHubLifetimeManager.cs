@@ -151,7 +151,6 @@ namespace Microsoft.AspNetCore.SignalR.Redis
                 previousConnectionTask = WriteAsync(connection, message);
             });
 
-
             if (connection.User.Identity.IsAuthenticated)
             {
                 var userChannel = typeof(THub).FullName + ".user." + connection.User.Identity.Name;
@@ -338,6 +337,11 @@ namespace Microsoft.AspNetCore.SignalR.Redis
             }
 
             return message;
+        }
+
+        public override Task InvokeAllExceptAsync(List<string> excludedIds, string methodName, object[] args)
+        {
+            throw new NotImplementedException();
         }
 
         private class LoggerTextWriter : TextWriter
