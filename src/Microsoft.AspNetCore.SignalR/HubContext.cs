@@ -24,7 +24,7 @@ namespace Microsoft.AspNetCore.SignalR
 
         public IClientProxy AllExcept(List<string> excludedIds)
         {
-            throw new System.NotImplementedException();
+            return new AllClientsExceptProxy<THub>(_lifetimeManager, excludedIds);
         }
 
         public virtual IClientProxy Client(string connectionId)

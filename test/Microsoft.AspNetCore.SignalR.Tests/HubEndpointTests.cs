@@ -476,13 +476,12 @@ namespace Microsoft.AspNetCore.SignalR.Tests
             }
         }
 
-        [Theory]
-        [MemberData(nameof(HubTypes))]
-        public async Task SendToAllExcept(Type hubType)
+        [Fact]
+        public async Task SendToAllExcept()
         {
             var serviceProvider = CreateServiceProvider();
 
-            dynamic endPoint = serviceProvider.GetService(GetEndPointType(hubType));
+            dynamic endPoint = serviceProvider.GetService(GetEndPointType(typeof(MethodHub)));
 
             using (var firstClient = new TestClient())
             using (var secondClient = new TestClient())
@@ -493,7 +492,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 Task thirdEndPointTask = endPoint.OnConnectedAsync(thirdClient.Connection);
 
 
-                await Task.WhenAll(firstClient.Connected, secondClient.Connected).OrTimeout();
+                await Task.WhenAll(firstClient.Connected, secondClient.Connected, thirdClient.Connected).OrTimeout();
 
                 var excludeSecondClientId = new List<string>();
                 excludeSecondClientId.Add(secondClient.Connection.ConnectionId);
@@ -501,26 +500,25 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 var excludeThirdClientId = new List<string>();
                 excludeThirdClientId.Add(thirdClient.Connection.ConnectionId);
 
-                await firstClient.SendInvocationAsync("SendToAllExcept", excludeSecondClientId, "To third").OrTimeout();
                 await firstClient.SendInvocationAsync("SendToAllExcept", excludeThirdClientId, "To second").OrTimeout();
+                await firstClient.SendInvocationAsync("SendToAllExcept", excludeSecondClientId, "To third").OrTimeout();
 
+                var secondClientResult = await secondClient.Read().OrTimeout();
+                var invocation = Assert.IsType<InvocationMessage>(secondClientResult);
+                Assert.Equal("Send", invocation.Target);
+                Assert.Equal("To second", invocation.Arguments[0]);
 
-                foreach (var result in await Task.WhenAll(
-                    firstClient.Read(),
-                    secondClient.Read()).OrTimeout())
-                {
-                    var invocation = Assert.IsType<InvocationMessage>(result);
-                    Assert.Equal("Broadcast", invocation.Target);
-                    Assert.Equal(1, invocation.Arguments.Length);
-                    Assert.Equal("test", invocation.Arguments[0]);
-                }
+                var thirdClientResult = await thirdClient.Read().OrTimeout(); ;
+                invocation = Assert.IsType<InvocationMessage>(thirdClientResult);
+                Assert.Equal("Send", invocation.Target);
+                Assert.Equal("To third", invocation.Arguments[0]);
 
                 // kill the connections
                 firstClient.Dispose();
                 secondClient.Dispose();
                 thirdClient.Dispose();
 
-                await Task.WhenAll(firstEndPointTask, secondEndPointTask).OrTimeout();
+                await Task.WhenAll(firstEndPointTask, secondEndPointTask, thirdEndPointTask).OrTimeout();
             }
         }
 
