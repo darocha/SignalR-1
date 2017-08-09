@@ -491,7 +491,6 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 Task secondEndPointTask = endPoint.OnConnectedAsync(secondClient.Connection);
                 Task thirdEndPointTask = endPoint.OnConnectedAsync(thirdClient.Connection);
 
-
                 await Task.WhenAll(firstClient.Connected, secondClient.Connected, thirdClient.Connected).OrTimeout();
 
                 var excludeSecondClientId = new List<string>();
@@ -521,7 +520,6 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 await Task.WhenAll(firstEndPointTask, secondEndPointTask, thirdEndPointTask).OrTimeout();
             }
         }
-
 
         [Theory]
         [MemberData(nameof(HubTypes))]
