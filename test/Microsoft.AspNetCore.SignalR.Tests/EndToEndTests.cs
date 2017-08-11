@@ -122,7 +122,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                     {
                         logger.LogInformation("Received {length} byte message", data.Length);
 
-                        if (base64Encoded(requestedTransferMode, connection))
+                        if (Base64Encoded(requestedTransferMode, connection))
                         {
                             data = Convert.FromBase64String(Encoding.UTF8.GetString(data));
                         }
@@ -153,7 +153,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                     var bytes = Encoding.UTF8.GetBytes(message);
 
                     // Need to encode binary payloads sent over text transports
-                    if (base64Encoded(requestedTransferMode, connection))
+                    if (Base64Encoded(requestedTransferMode, connection))
                     {
                         bytes = Encoding.UTF8.GetBytes(Convert.ToBase64String(bytes));
                     }
@@ -181,7 +181,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 }
             }
 
-            bool base64Encoded(TransferMode transferMode, IConnection connection)
+            bool Base64Encoded(TransferMode transferMode, IConnection connection)
             {
                 return requestedTransferMode == TransferMode.Binary &&
                     connection.Features.Get<ITransferModeFeature>().TransferMode == TransferMode.Text;
