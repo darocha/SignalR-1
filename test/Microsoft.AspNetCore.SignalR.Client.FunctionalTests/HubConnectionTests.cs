@@ -240,16 +240,11 @@ namespace Microsoft.AspNetCore.SignalR.Client.FunctionalTests
                 new MessagePackHubProtocol(),
             };
 
-
         public static IEnumerable<TransportType> TransportTypes()
         {
             if (WebsocketsSupported())
             {
-                // TODO: Currently we are always sending Text messages over websockets which does not work
-                // with binary protocols. It is getting fixed separately.
-                // The tests are also failing on full framework when using WebSockets transport
-                // due to: https://github.com/aspnet/SignalR/issues/568
-                // yield return TransportType.WebSockets;
+                yield return TransportType.WebSockets;
             }
             yield return TransportType.ServerSentEvents;
             yield return TransportType.LongPolling;

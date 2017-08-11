@@ -100,9 +100,8 @@ namespace Microsoft.AspNetCore.SignalR.Tests
 
         [ConditionalTheory]
         [OSSkipCondition(OperatingSystems.Windows, WindowsVersions.Win7, WindowsVersions.Win2008R2, SkipReason = "No WebSockets Client for this platform")]
-        [MemberData(nameof(TransportTypes))]
-        // TODO: transfer types
-        public async Task ConnectionCanSendAndReceiveMessages(TransportType transportType)
+        [MemberData(nameof(TransportTypesXTransferModes))]
+        public async Task ConnectionCanSendAndReceiveMessages(TransportType transportType, TransferMode requestedTransferMode)
         {
             using (StartLog(out var loggerFactory, testName: $"ConnectionCanSendAndReceiveMessages_{transportType.ToString()}"))
             {
@@ -114,7 +113,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 var connection = new HttpConnection(new Uri(url), transportType, loggerFactory);
 
                 connection.Features.Set<ITransferModeFeature>(
-                    new TransferModeFeature { TransferMode = TransferMode.Text });
+                    new TransferModeFeature { TransferMode = requestedTransferMode });
                 try
                 {
                     var receiveTcs = new TaskCompletionSource<string>();
@@ -122,6 +121,12 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                     connection.Received += data =>
                     {
                         logger.LogInformation("Received {length} byte message", data.Length);
+
+                        if (base64Encoded(requestedTransferMode, connection))
+                        {
+                            data = Convert.FromBase64String(Encoding.UTF8.GetString(data));
+                        }
+
                         receiveTcs.TrySetResult(Encoding.UTF8.GetString(data));
                         return Task.CompletedTask;
                     };
@@ -146,6 +151,13 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                     logger.LogInformation("Started connection to {url}", url);
 
                     var bytes = Encoding.UTF8.GetBytes(message);
+
+                    // Need to encode binary payloads sent over text transports
+                    if (base64Encoded(requestedTransferMode, connection))
+                    {
+                        bytes = Encoding.UTF8.GetBytes(Convert.ToBase64String(bytes));
+                    }
+
                     logger.LogInformation("Sending {length} byte message", bytes.Length);
                     await connection.SendAsync(bytes).OrTimeout();
                     logger.LogInformation("Sent message", bytes.Length);
@@ -167,6 +179,12 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                     await connection.DisposeAsync().OrTimeout();
                     logger.LogInformation("Disposed Connection");
                 }
+            }
+
+            bool base64Encoded(TransferMode transferMode, IConnection connection)
+            {
+                return requestedTransferMode == TransferMode.Binary &&
+                    connection.Features.Get<ITransferModeFeature>().TransferMode == TransferMode.Text;
             }
         }
 
@@ -301,5 +319,14 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 new object[] { TransportType.ServerSentEvents },
                 new object[] { TransportType.LongPolling }
             };
+
+        public static IEnumerable<object[]> TransportTypesXTransferModes()
+        {
+            foreach (var transport in TransportTypes)
+            {
+                yield return new object[] { transport[0], TransferMode.Text };
+                yield return new object[] { transport[0], TransferMode.Binary };
+            }
+        }
     }
 }
