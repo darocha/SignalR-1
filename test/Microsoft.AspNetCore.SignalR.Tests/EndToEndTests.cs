@@ -100,7 +100,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
 
         [ConditionalTheory]
         [OSSkipCondition(OperatingSystems.Windows, WindowsVersions.Win7, WindowsVersions.Win2008R2, SkipReason = "No WebSockets Client for this platform")]
-        [MemberData(nameof(TransportTypesXTransferModes))]
+        [MemberData(nameof(TransportTypesAndTransferModes))]
         public async Task ConnectionCanSendAndReceiveMessages(TransportType transportType, TransferMode requestedTransferMode)
         {
             using (StartLog(out var loggerFactory, testName: $"ConnectionCanSendAndReceiveMessages_{transportType.ToString()}"))
@@ -122,7 +122,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                     {
                         logger.LogInformation("Received {length} byte message", data.Length);
 
-                        if (Base64Encoded(requestedTransferMode, connection))
+                        if (IsBase64Encoded(requestedTransferMode, connection))
                         {
                             data = Convert.FromBase64String(Encoding.UTF8.GetString(data));
                         }
@@ -153,7 +153,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                     var bytes = Encoding.UTF8.GetBytes(message);
 
                     // Need to encode binary payloads sent over text transports
-                    if (Base64Encoded(requestedTransferMode, connection))
+                    if (IsBase64Encoded(requestedTransferMode, connection))
                     {
                         bytes = Encoding.UTF8.GetBytes(Convert.ToBase64String(bytes));
                     }
@@ -181,7 +181,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 }
             }
 
-            bool Base64Encoded(TransferMode transferMode, IConnection connection)
+            bool IsBase64Encoded(TransferMode transferMode, IConnection connection)
             {
                 return requestedTransferMode == TransferMode.Binary &&
                     connection.Features.Get<ITransferModeFeature>().TransferMode == TransferMode.Text;
@@ -320,12 +320,15 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 new object[] { TransportType.LongPolling }
             };
 
-        public static IEnumerable<object[]> TransportTypesXTransferModes()
+        public static IEnumerable<object[]> TransportTypesAndTransferModes
         {
-            foreach (var transport in TransportTypes)
+            get
             {
-                yield return new object[] { transport[0], TransferMode.Text };
-                yield return new object[] { transport[0], TransferMode.Binary };
+                foreach (var transport in TransportTypes)
+                {
+                    yield return new object[] { transport[0], TransferMode.Text };
+                    yield return new object[] { transport[0], TransferMode.Binary };
+                }
             }
         }
     }

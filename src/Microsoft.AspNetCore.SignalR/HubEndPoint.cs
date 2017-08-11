@@ -120,10 +120,10 @@ namespace Microsoft.AspNetCore.SignalR
                             ? (IDataEncoder)Base64Encoder
                             : PassThroughEncoder;
 
-                        var transferMode = connection.Features.Get<ITransferModeFeature>() ??
+                        var transferModeFeature = connection.Features.Get<ITransferModeFeature>() ??
                             throw new InvalidOperationException("Unable to read transfer mode.");
 
-                        transferMode.TransferMode =
+                        transferModeFeature.TransferMode =
                             (protocol.Type == ProtocolType.Binary && (transportCapabilities & TransferMode.Binary) != 0)
                                 ? TransferMode.Binary
                                 : TransferMode.Text;
