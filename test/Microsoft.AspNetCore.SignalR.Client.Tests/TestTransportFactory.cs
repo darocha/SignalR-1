@@ -1,12 +1,12 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
-using System.Net.Http;
-using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.Http.Connections.Client.Internal;
 
-namespace Microsoft.AspNetCore.Sockets.Client.Tests
+namespace Microsoft.AspNetCore.SignalR.Client.Tests
 {
-    public class TestTransportFactory : ITransportFactory
+    internal class TestTransportFactory : ITransportFactory
     {
         private readonly ITransport _transport;
 
@@ -15,7 +15,7 @@ namespace Microsoft.AspNetCore.Sockets.Client.Tests
             _transport = transport;
         }
 
-        public ITransport CreateTransport(TransportType availableServerTransports)
+        public ITransport CreateTransport(HttpTransportType availableServerTransports)
         {
             return _transport;
         }

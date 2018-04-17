@@ -1,19 +1,18 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
 using System.IO;
+using System.IO.Pipelines;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Threading.Tasks.Channels;
-using Microsoft.AspNetCore.Client.Tests;
-using Microsoft.AspNetCore.SignalR.Tests.Common;
-using Microsoft.AspNetCore.Sockets;
-using Microsoft.AspNetCore.Sockets.Client;
-using Microsoft.AspNetCore.Sockets.Internal;
+using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.Http.Connections.Client;
+using Microsoft.AspNetCore.Http.Connections.Client.Internal;
 using Moq;
 using Moq.Protected;
 using Xunit;
@@ -42,6 +41,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                     mockStream
                         .Setup(s => s.CopyToAsync(It.IsAny<Stream>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                         .Returns(copyToAsyncTcs.Task);
+                    mockStream.Setup(s => s.CanRead).Returns(true);
                     return new HttpResponseMessage { Content = new StreamContent(mockStream.Object) };
                 });
 
@@ -50,11 +50,8 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                 using (var httpClient = new HttpClient(mockHttpHandler.Object))
                 {
                     var sseTransport = new ServerSentEventsTransport(httpClient);
-                    var connectionToTransport = Channel.CreateUnbounded<SendMessage>();
-                    var transportToConnection = Channel.CreateUnbounded<byte[]>();
-                    var channelConnection = new ChannelConnection<SendMessage, byte[]>(connectionToTransport, transportToConnection);
                     await sseTransport.StartAsync(
-                        new Uri("http://fakeuri.org"), channelConnection, TransferMode.Text, connectionId: string.Empty).OrTimeout();
+                        new Uri("http://fakeuri.org"), TransferFormat.Text).OrTimeout();
 
                     await eventStreamTcs.Task.OrTimeout();
                     await sseTransport.StopAsync().OrTimeout();
@@ -70,27 +67,26 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
         [Fact]
         public async Task SSETransportStopsSendAndReceiveLoopsWhenTransportStopped()
         {
-            var eventStreamCts = new CancellationTokenSource();
             var mockHttpHandler = new Mock<HttpMessageHandler>();
             mockHttpHandler.Protected()
                 .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
-                .Returns<HttpRequestMessage, CancellationToken>(async (request, cancellationToken) =>
+                .Returns<HttpRequestMessage, CancellationToken>((request, cancellationToken) =>
                 {
-                    await Task.Yield();
-
                     var mockStream = new Mock<Stream>();
                     mockStream
                         .Setup(s => s.CopyToAsync(It.IsAny<Stream>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                         .Returns<Stream, int, CancellationToken>(async (stream, bufferSize, t) =>
+                        {
+                            var buffer = Encoding.ASCII.GetBytes("data: 3:abc\r\n\r\n");
+                            while (!t.IsCancellationRequested)
                             {
-                                var buffer = Encoding.ASCII.GetBytes("data: 3:abc\r\n\r\n");
-                                while (!eventStreamCts.IsCancellationRequested)
-                                {
-                                    await stream.WriteAsync(buffer, 0, buffer.Length);
-                                }
-                            });
+                                await stream.WriteAsync(buffer, 0, buffer.Length).OrTimeout();
+                                await Task.Delay(100);
+                            }
+                        });
+                    mockStream.Setup(s => s.CanRead).Returns(true);
 
-                    return new HttpResponseMessage { Content = new StreamContent(mockStream.Object) };
+                    return Task.FromResult(new HttpResponseMessage { Content = new StreamContent(mockStream.Object) });
                 });
 
             Task transportActiveTask;
@@ -101,16 +97,13 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
 
                 try
                 {
-                    var connectionToTransport = Channel.CreateUnbounded<SendMessage>();
-                    var transportToConnection = Channel.CreateUnbounded<byte[]>();
-                    var channelConnection = new ChannelConnection<SendMessage, byte[]>(connectionToTransport, transportToConnection);
                     await sseTransport.StartAsync(
-                        new Uri("http://fakeuri.org"), channelConnection, TransferMode.Text, connectionId: string.Empty).OrTimeout();
+                        new Uri("http://fakeuri.org"), TransferFormat.Text).OrTimeout();
 
                     transportActiveTask = sseTransport.Running;
                     Assert.False(transportActiveTask.IsCompleted);
-                    var message = await transportToConnection.In.ReadAsync().AsTask().OrTimeout();
-                    Assert.Equal("3:abc", Encoding.ASCII.GetString(message));
+                    var message = await sseTransport.Input.ReadSingleAsync().OrTimeout();
+                    Assert.StartsWith("3:abc", Encoding.ASCII.GetString(message));
                 }
                 finally
                 {
@@ -118,7 +111,6 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                 }
 
                 await transportActiveTask.OrTimeout();
-                eventStreamCts.Cancel();
             }
         }
 
@@ -140,6 +132,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                             var buffer = Encoding.ASCII.GetBytes("data: 3:a");
                             await stream.WriteAsync(buffer, 0, buffer.Length);
                         });
+                    mockStream.Setup(s => s.CanRead).Returns(true);
 
                     return new HttpResponseMessage { Content = new StreamContent(mockStream.Object) };
                 });
@@ -148,13 +141,13 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             {
                 var sseTransport = new ServerSentEventsTransport(httpClient);
 
-                var connectionToTransport = Channel.CreateUnbounded<SendMessage>();
-                var transportToConnection = Channel.CreateUnbounded<byte[]>();
-                var channelConnection = new ChannelConnection<SendMessage, byte[]>(connectionToTransport, transportToConnection);
                 await sseTransport.StartAsync(
-                    new Uri("http://fakeuri.org"), channelConnection, TransferMode.Text, connectionId: string.Empty).OrTimeout();
+                    new Uri("http://fakeuri.org"), TransferFormat.Text).OrTimeout();
 
-                var exception = await Assert.ThrowsAsync<FormatException>(() => sseTransport.Running.OrTimeout());
+                var exception = await Assert.ThrowsAsync<FormatException>(() => sseTransport.Input.ReadAllAsync());
+
+                await sseTransport.Running.OrTimeout();
+
                 Assert.Equal("Incomplete message.", exception.Message);
             }
         }
@@ -182,6 +175,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                         mockStream
                             .Setup(s => s.CopyToAsync(It.IsAny<Stream>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                             .Returns(copyToAsyncTcs.Task);
+                        mockStream.Setup(s => s.CanRead).Returns(true);
                         return new HttpResponseMessage { Content = new StreamContent(mockStream.Object) };
                     }
 
@@ -192,21 +186,17 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             {
                 var sseTransport = new ServerSentEventsTransport(httpClient);
 
-                var connectionToTransport = Channel.CreateUnbounded<SendMessage>();
-                var transportToConnection = Channel.CreateUnbounded<byte[]>();
-                var channelConnection = new ChannelConnection<SendMessage, byte[]>(connectionToTransport, transportToConnection);
-
                 await sseTransport.StartAsync(
-                    new Uri("http://fakeuri.org"), channelConnection, TransferMode.Text, connectionId: string.Empty).OrTimeout();
+                    new Uri("http://fakeuri.org"), TransferFormat.Text).OrTimeout();
                 await eventStreamTcs.Task;
 
-                var sendTcs = new TaskCompletionSource<object>();
-                Assert.True(connectionToTransport.Out.TryWrite(new SendMessage(new byte[] { 0x42 }, sendTcs)));
+                await sseTransport.Output.WriteAsync(new byte[] { 0x42 });
 
-                var exception = await Assert.ThrowsAsync<HttpRequestException>(() => sendTcs.Task.OrTimeout());
+                var exception = await Assert.ThrowsAsync<HttpRequestException>(() => sseTransport.Input.ReadAllAsync().OrTimeout());
                 Assert.Contains("500", exception.Message);
 
-                Assert.Same(exception, await Assert.ThrowsAsync<HttpRequestException>(() => sseTransport.Running.OrTimeout()));
+                // Errors are only communicated through the pipe
+                await sseTransport.Running.OrTimeout();
             }
         }
 
@@ -231,6 +221,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                     mockStream
                         .Setup(s => s.CopyToAsync(It.IsAny<Stream>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                         .Returns(copyToAsyncTcs.Task);
+                    mockStream.Setup(s => s.CanRead).Returns(true);
                     return new HttpResponseMessage { Content = new StreamContent(mockStream.Object) };
                 });
 
@@ -238,15 +229,11 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             {
                 var sseTransport = new ServerSentEventsTransport(httpClient);
 
-                var connectionToTransport = Channel.CreateUnbounded<SendMessage>();
-                var transportToConnection = Channel.CreateUnbounded<byte[]>();
-                var channelConnection = new ChannelConnection<SendMessage, byte[]>(connectionToTransport, transportToConnection);
-
                 await sseTransport.StartAsync(
-                    new Uri("http://fakeuri.org"), channelConnection, TransferMode.Text, connectionId: string.Empty).OrTimeout();
+                    new Uri("http://fakeuri.org"), TransferFormat.Text).OrTimeout();
                 await eventStreamTcs.Task.OrTimeout();
 
-                connectionToTransport.Out.TryComplete(null);
+                sseTransport.Output.Complete();
 
                 await sseTransport.Running.OrTimeout();
             }
@@ -268,23 +255,18 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             {
                 var sseTransport = new ServerSentEventsTransport(httpClient);
 
-                var connectionToTransport = Channel.CreateUnbounded<SendMessage>();
-                var transportToConnection = Channel.CreateUnbounded<byte[]>();
-                var channelConnection = new ChannelConnection<SendMessage, byte[]>(connectionToTransport, transportToConnection);
                 await sseTransport.StartAsync(
-                    new Uri("http://fakeuri.org"), channelConnection, TransferMode.Text, connectionId: string.Empty).OrTimeout();
+                    new Uri("http://fakeuri.org"), TransferFormat.Text).OrTimeout();
 
-                var message = await transportToConnection.In.ReadAsync().AsTask().OrTimeout();
+                var message = await sseTransport.Input.ReadSingleAsync().OrTimeout();
                 Assert.Equal("3:abc", Encoding.ASCII.GetString(message));
 
                 await sseTransport.Running.OrTimeout();
             }
         }
 
-        [Theory]
-        [InlineData(TransferMode.Text)]
-        [InlineData(TransferMode.Binary)]
-        public async Task SSETransportSetsTransferMode(TransferMode transferMode)
+        [Fact]
+        public async Task SSETransportDoesNotSupportBinary()
         {
             var mockHttpHandler = new Mock<HttpMessageHandler>();
             mockHttpHandler.Protected()
@@ -298,18 +280,17 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             using (var httpClient = new HttpClient(mockHttpHandler.Object))
             {
                 var sseTransport = new ServerSentEventsTransport(httpClient);
-                var connectionToTransport = Channel.CreateUnbounded<SendMessage>();
-                var transportToConnection = Channel.CreateUnbounded<byte[]>();
-                var channelConnection = new ChannelConnection<SendMessage, byte[]>(connectionToTransport, transportToConnection);
-                Assert.Null(sseTransport.Mode);
-                await sseTransport.StartAsync(new Uri("http://fakeuri.org"), channelConnection, transferMode, connectionId: string.Empty).OrTimeout();
-                Assert.Equal(TransferMode.Text, sseTransport.Mode);
-                await sseTransport.StopAsync().OrTimeout();
+
+                var ex = await Assert.ThrowsAsync<ArgumentException>(() => sseTransport.StartAsync(new Uri("http://fakeuri.org"), TransferFormat.Binary).OrTimeout());
+                Assert.Equal($"The 'Binary' transfer format is not supported by this transport.{Environment.NewLine}Parameter name: transferFormat", ex.Message);
             }
         }
 
-        [Fact]
-        public async Task SSETransportThrowsForInvalidTransferMode()
+        [Theory]
+        [InlineData(TransferFormat.Binary)] // Binary not supported
+        [InlineData(TransferFormat.Text | TransferFormat.Binary)] // Multiple values not allowed
+        [InlineData((TransferFormat)42)] // Unexpected value
+        public async Task SSETransportThrowsForInvalidTransferFormat(TransferFormat transferFormat)
         {
             var mockHttpHandler = new Mock<HttpMessageHandler>();
             mockHttpHandler.Protected()
@@ -323,14 +304,11 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             using (var httpClient = new HttpClient(mockHttpHandler.Object))
             {
                 var sseTransport = new ServerSentEventsTransport(httpClient);
-                var connectionToTransport = Channel.CreateUnbounded<SendMessage>();
-                var transportToConnection = Channel.CreateUnbounded<byte[]>();
-                var channelConnection = new ChannelConnection<SendMessage, byte[]>(connectionToTransport, transportToConnection);
                 var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
-                    sseTransport.StartAsync(new Uri("http://fakeuri.org"), null, TransferMode.Text | TransferMode.Binary, connectionId: string.Empty));
+                    sseTransport.StartAsync(new Uri("http://fakeuri.org"), transferFormat));
 
-                Assert.Contains("Invalid transfer mode.", exception.Message);
-                Assert.Equal("requestedTransferMode", exception.ParamName);
+                Assert.Contains($"The '{transferFormat}' transfer format is not supported by this transport.", exception.Message);
+                Assert.Equal("transferFormat", exception.ParamName);
             }
         }
     }

@@ -1,24 +1,33 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Internal;
+using Microsoft.Extensions.Options;
 
 namespace Microsoft.Extensions.DependencyInjection
 {
     public static class SignalRDependencyInjectionExtensions
     {
-        public static ISignalRBuilder AddSignalRCore(this IServiceCollection services)
+        public static ISignalRServerBuilder AddHubOptions<THub>(this ISignalRServerBuilder signalrBuilder, Action<HubOptions<THub>> options) where THub : Hub
         {
-            services.AddSingleton(typeof(HubLifetimeManager<>), typeof(DefaultHubLifetimeManager<>));
-            services.AddSingleton(typeof(IHubProtocolResolver), typeof(DefaultHubProtocolResolver));
-            services.AddSingleton(typeof(IHubContext<>), typeof(HubContext<>));
-            services.AddSingleton(typeof(HubEndPoint<>), typeof(HubEndPoint<>));
-            services.AddScoped(typeof(IHubActivator<>), typeof(DefaultHubActivator<>));
+            signalrBuilder.Services.AddSingleton<IConfigureOptions<HubOptions<THub>>, HubOptionsSetup<THub>>();
+            signalrBuilder.Services.Configure(options);
+            return signalrBuilder;
+        }
 
-            services.AddAuthorization();
+        public static ISignalRServerBuilder AddSignalR(this IServiceCollection services)
+        {
+            services.AddConnections();
+            services.AddSingleton<IConfigureOptions<HubOptions>, HubOptionsSetup>();
+            return services.AddSignalRCore();
+        }
 
-            return new SignalRBuilder(services);
+        public static ISignalRServerBuilder AddSignalR(this IServiceCollection services, Action<HubOptions> options)
+        {
+            return services.Configure(options)
+                .AddSignalR();
         }
     }
 }

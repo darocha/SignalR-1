@@ -4,31 +4,38 @@
 using System;
 using System.IO;
 using System.Net;
+using System.Threading.Tasks;
 using StackExchange.Redis;
 
 namespace Microsoft.AspNetCore.SignalR.Redis
 {
     public class RedisOptions
     {
-        public ConfigurationOptions Options { get; set; } = new ConfigurationOptions();
-
-        public Func<TextWriter, ConnectionMultiplexer> Factory { get; set; }
-
-        // TODO: Async
-        internal ConnectionMultiplexer Connect(TextWriter log)
+        public ConfigurationOptions Configuration { get; set; } = new ConfigurationOptions
         {
-            if (Factory == null)
+            // Enable reconnecting by default
+            AbortOnConnectFail = false
+        };
+
+        public Func<TextWriter, Task<IConnectionMultiplexer>> ConnectionFactory { get; set; }
+
+        internal async Task<IConnectionMultiplexer> ConnectAsync(TextWriter log)
+        {
+            // Factory is publically settable. Assigning to a local variable before null check for thread safety.
+            var factory = ConnectionFactory;
+            if (factory == null)
             {
                 // REVIEW: Should we do this?
-                if (Options.EndPoints.Count == 0)
+                if (Configuration.EndPoints.Count == 0)
                 {
-                    Options.EndPoints.Add(IPAddress.Loopback, 0);
-                    Options.SetDefaultPorts();
+                    Configuration.EndPoints.Add(IPAddress.Loopback, 0);
+                    Configuration.SetDefaultPorts();
                 }
-                return ConnectionMultiplexer.Connect(Options, log);
+
+                return await ConnectionMultiplexer.ConnectAsync(Configuration, log);
             }
 
-            return Factory(log);
+            return await factory(log);
         }
     }
 }

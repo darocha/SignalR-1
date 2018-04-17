@@ -2,12 +2,14 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.SignalR.Internal;
+using Microsoft.AspNetCore.SignalR.Redis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.AspNetCore.SignalR.Redis;
-using System.Linq;
 
 namespace ChatSample
 {
@@ -35,7 +37,7 @@ namespace ChatSample
         where THubLifetimeManager : HubLifetimeManager<THub>
         where THub : HubWithPresence
     {
-        private readonly HubConnectionList _connections = new HubConnectionList();
+        private readonly HubConnectionStore _connections = new HubConnectionStore();
         private readonly IUserTracker<THub> _userTracker;
         private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly ILogger _logger;
@@ -84,7 +86,7 @@ namespace ChatSample
                 else
                 {
                     return hub.OnUsersJoined(
-                        users.Where(u => u.ConnectionId != hub.Context.Connection.ConnectionId).ToArray());
+                        users.Where(u => u.ConnectionId != hub.Context.ConnectionId).ToArray());
                 }
                 return Task.CompletedTask;
             });
@@ -110,8 +112,8 @@ namespace ChatSample
                         _hubContext = _serviceProvider.GetRequiredService<IHubContext<THub>>();
                     }
 
-                    hub.Clients = _hubContext.Clients;
-                    hub.Context = new HubCallerContext(connection);
+                    hub.Clients = new HubCallerClients(_hubContext.Clients, connection.ConnectionId);
+                    hub.Context = new DefaultHubCallerContext(connection);
                     hub.Groups = _hubContext.Groups;
 
                     try
@@ -136,34 +138,59 @@ namespace ChatSample
             _userTracker.UsersLeft -= OnUsersLeft;
         }
 
-        public override Task InvokeAllAsync(string methodName, object[] args)
+        public override Task SendAllAsync(string methodName, object[] args)
         {
-            return _wrappedHubLifetimeManager.InvokeAllAsync(methodName, args);
+            return _wrappedHubLifetimeManager.SendAllAsync(methodName, args);
         }
 
-        public override Task InvokeConnectionAsync(string connectionId, string methodName, object[] args)
+        public override Task SendAllExceptAsync(string methodName, object[] args, IReadOnlyList<string> excludedConnectionIds)
         {
-            return _wrappedHubLifetimeManager.InvokeConnectionAsync(connectionId, methodName, args);
+            return _wrappedHubLifetimeManager.SendAllExceptAsync(methodName, args, excludedConnectionIds);
         }
 
-        public override Task InvokeGroupAsync(string groupName, string methodName, object[] args)
+        public override Task SendConnectionAsync(string connectionId, string methodName, object[] args)
         {
-            return _wrappedHubLifetimeManager.InvokeGroupAsync(groupName, methodName, args);
+            return _wrappedHubLifetimeManager.SendConnectionAsync(connectionId, methodName, args);
         }
 
-        public override Task InvokeUserAsync(string userId, string methodName, object[] args)
+        public override Task SendConnectionsAsync(IReadOnlyList<string> connectionIds, string methodName, object[] args)
         {
-            return _wrappedHubLifetimeManager.InvokeUserAsync(userId, methodName, args);
+            return _wrappedHubLifetimeManager.SendConnectionsAsync(connectionIds, methodName, args);
         }
 
-        public override Task AddGroupAsync(string connectionId, string groupName)
+        public override Task SendGroupAsync(string groupName, string methodName, object[] args)
         {
-            return _wrappedHubLifetimeManager.AddGroupAsync(connectionId, groupName);
+            return _wrappedHubLifetimeManager.SendGroupAsync(groupName, methodName, args);
         }
 
-        public override Task RemoveGroupAsync(string connectionId, string groupName)
+        public override Task SendGroupsAsync(IReadOnlyList<string> groupNames, string methodName, object[] args)
         {
-            return _wrappedHubLifetimeManager.RemoveGroupAsync(connectionId, groupName);
+            return _wrappedHubLifetimeManager.SendGroupsAsync(groupNames, methodName, args);
+        }
+
+        public override Task SendUserAsync(string userId, string methodName, object[] args)
+        {
+            return _wrappedHubLifetimeManager.SendUserAsync(userId, methodName, args);
+        }
+
+        public override Task AddToGroupAsync(string connectionId, string groupName)
+        {
+            return _wrappedHubLifetimeManager.AddToGroupAsync(connectionId, groupName);
+        }
+
+        public override Task RemoveFromGroupAsync(string connectionId, string groupName)
+        {
+            return _wrappedHubLifetimeManager.RemoveFromGroupAsync(connectionId, groupName);
+        }
+
+        public override Task SendGroupExceptAsync(string groupName, string methodName, object[] args, IReadOnlyList<string> excludedConnectionIds)
+        {
+            return _wrappedHubLifetimeManager.SendGroupExceptAsync(groupName, methodName, args, excludedConnectionIds);
+        }
+
+        public override Task SendUsersAsync(IReadOnlyList<string> userIds, string methodName, object[] args)
+        {
+            return _wrappedHubLifetimeManager.SendUsersAsync(userIds, methodName, args);
         }
     }
 }

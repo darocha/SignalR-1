@@ -1,14 +1,13 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks.Channels;
+using System.Linq;
 using Microsoft.AspNetCore.SignalR.Internal;
-using Microsoft.AspNetCore.SignalR.Internal.Protocol;
-using Microsoft.AspNetCore.Sockets;
-using Moq;
-using Newtonsoft.Json;
+using Microsoft.AspNetCore.SignalR.Protocol;
+using Microsoft.AspNetCore.SignalR.Tests;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Microsoft.AspNetCore.SignalR.Common.Protocol.Tests
@@ -16,32 +15,71 @@ namespace Microsoft.AspNetCore.SignalR.Common.Protocol.Tests
     public class DefaultHubProtocolResolverTests
     {
         [Theory]
-        [MemberData(nameof(HubProtocols))]
-        public void DefaultHubProtocolResolverTestsCanCreateSupportedProtocols(IHubProtocol protocol)
+        [MemberData(nameof(HubProtocolNames))]
+        public void DefaultHubProtocolResolverTestsCanCreateAllProtocols(string protocolName)
         {
-            var mockConnection = new Mock<HubConnectionContext>(Channel.CreateUnbounded<HubMessage>().Out, new Mock<ConnectionContext>().Object);
+            var protocol = HubProtocolHelpers.GetHubProtocol(protocolName);
+
+            var resolver = new DefaultHubProtocolResolver(HubProtocolHelpers.AllProtocols, NullLogger<DefaultHubProtocolResolver>.Instance);
             Assert.IsType(
                 protocol.GetType(),
-                new DefaultHubProtocolResolver().GetProtocol(protocol.Name, mockConnection.Object));
+                resolver.GetProtocol(protocol.Name, HubProtocolHelpers.AllProtocolNames));
         }
 
         [Theory]
-        [InlineData(null)]
-        [InlineData("dummy")]
-        public void DefaultHubProtocolResolverThrowsForNotSupportedProtocol(string protocolName)
+        [MemberData(nameof(HubProtocolNames))]
+        public void DefaultHubProtocolResolverCreatesProtocolswhenSupoortedProtocolsIsNull(string protocolName)
         {
-            var mockConnection = new Mock<HubConnectionContext>(Channel.CreateUnbounded<HubMessage>().Out, new Mock<ConnectionContext>().Object);
-            var exception = Assert.Throws<NotSupportedException>(
-                () => new DefaultHubProtocolResolver().GetProtocol(protocolName, mockConnection.Object));
+            var protocol = HubProtocolHelpers.GetHubProtocol(protocolName);
 
-            Assert.Equal($"The protocol '{protocolName ?? "(null)"}' is not supported.", exception.Message);
+            List<string> supportedProtocols = null;
+            var resolver = new DefaultHubProtocolResolver(HubProtocolHelpers.AllProtocols, NullLogger<DefaultHubProtocolResolver>.Instance);
+            Assert.IsType(
+                protocol.GetType(),
+                resolver.GetProtocol(protocol.Name, supportedProtocols));
         }
 
-        public static IEnumerable<object[]> HubProtocols =>
-            new[]
-            {
-                new object[] { new JsonHubProtocol(new JsonSerializer()) },
-                new object[] { new MessagePackHubProtocol() },
-            };
+        [Theory]
+        [MemberData(nameof(HubProtocolNames))]
+        public void DefaultHubProtocolResolverTestsCanCreateSupportedProtocols(string protocolName)
+        {
+            var protocol = HubProtocolHelpers.GetHubProtocol(protocolName);
+
+            var supportedProtocols = new List<string> { protocol.Name };
+            var resolver = new DefaultHubProtocolResolver(HubProtocolHelpers.AllProtocols, NullLogger<DefaultHubProtocolResolver>.Instance);
+            Assert.IsType(
+                protocol.GetType(),
+                resolver.GetProtocol(protocol.Name, supportedProtocols));
+        }
+
+        [Fact]
+        public void DefaultHubProtocolResolverThrowsForNullProtocol()
+        {
+            var resolver = new DefaultHubProtocolResolver(HubProtocolHelpers.AllProtocols, NullLogger<DefaultHubProtocolResolver>.Instance);
+            var exception = Assert.Throws<ArgumentNullException>(
+                () => resolver.GetProtocol(null, HubProtocolHelpers.AllProtocolNames));
+
+            Assert.Equal("protocolName", exception.ParamName);
+        }
+
+        [Fact]
+        public void DefaultHubProtocolResolverReturnsNullForNotSupportedProtocol()
+        {
+            var resolver = new DefaultHubProtocolResolver(HubProtocolHelpers.AllProtocols, NullLogger<DefaultHubProtocolResolver>.Instance);
+            Assert.Null(resolver.GetProtocol("notARealProtocol", HubProtocolHelpers.AllProtocolNames));
+        }
+
+        [Fact]
+        public void RegisteringMultipleHubProtocolsFails()
+        {
+            var exception = Assert.Throws<InvalidOperationException>(() => new DefaultHubProtocolResolver(new[] {
+                new JsonHubProtocol(),
+                new JsonHubProtocol()
+            }, NullLogger<DefaultHubProtocolResolver>.Instance));
+
+            Assert.Equal($"Multiple Hub Protocols with the name 'json' were registered.", exception.Message);
+        }
+
+        public static IEnumerable<object[]> HubProtocolNames => HubProtocolHelpers.AllProtocols.Select(p => new object[] {p.Name});
     }
 }

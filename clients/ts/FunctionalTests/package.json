@@ -1,0 +1,30 @@
+{
+  "name": "functionaltests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/debug": "0.0.30",
+    "@types/node": "^9.4.6",
+    "debug": "^3.1.0",
+    "es6-promise": "^4.2.2",
+    "tap-parser": "^7.0.0",
+    "tee": "^0.2.0",
+    "ts-node": "^4.1.0"
+  },
+  "scripts": {
+    "clean": "node ../node_modules/rimraf/bin.js ./wwwroot/dist ./obj/js",
+    "build": "npm run clean && npm run build:lint && npm run build:tsc && npm run build:rollup",
+    "build:lint": "node ../node_modules/tslint/bin/tslint -c ../tslint.json -p ./tsconfig.json",
+    "build:tsc": "node ../node_modules/typescript/bin/tsc --project ./tsconfig.json",
+    "build:rollup": "node ../node_modules/rollup/bin/rollup -c",
+    "pretest": "npm run build",
+    "test": "dotnet build && npm run test-only",
+    "test-only": "ts-node --project ./selenium/tsconfig.json ./selenium/run-tests.ts",
+    "ci-test": "ts-node --project ./selenium/tsconfig.json ./selenium/run-ci-tests.ts"
+  },
+  "author": "",
+  "license": "Apache-2.0"
+}

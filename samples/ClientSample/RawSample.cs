@@ -1,14 +1,15 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Diagnostics;
+using System.Buffers;
+using System.IO;
+using System.IO.Pipelines;
 using System.Linq;
-using System.Net.Http;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Sockets.Client;
+using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.Http.Connections.Client;
 using Microsoft.Extensions.CommandLineUtils;
 using Microsoft.Extensions.Logging;
 
@@ -32,42 +33,24 @@ namespace ClientSample
         {
             baseUrl = string.IsNullOrEmpty(baseUrl) ? "http://localhost:5000/chat" : baseUrl;
 
-            var loggerFactory = new LoggerFactory();
-            var logger = loggerFactory.CreateLogger<Program>();
-
             Console.WriteLine($"Connecting to {baseUrl}...");
-            var connection = new HttpConnection(new Uri(baseUrl), loggerFactory);
+            var connection = new HttpConnection(new Uri(baseUrl));
             try
             {
-                var cts = new CancellationTokenSource();
-                connection.Received += data => Console.Out.WriteLineAsync($"{Encoding.UTF8.GetString(data)}");
-                connection.Closed += e =>
-                {
-                    cts.Cancel();
-                    return Task.CompletedTask;
-                };
-
-                await connection.StartAsync();
+                await connection.StartAsync(TransferFormat.Text);
 
                 Console.WriteLine($"Connected to {baseUrl}");
-
+                var shutdown = new TaskCompletionSource<object>();
                 Console.CancelKeyPress += (sender, a) =>
                 {
                     a.Cancel = true;
-                    cts.Cancel();
+                    shutdown.TrySetResult(null);
                 };
 
-                while (!cts.Token.IsCancellationRequested)
-                {
-                    var line = await Task.Run(() => Console.ReadLine(), cts.Token);
+                _ = ReceiveLoop(Console.Out, connection.Transport.Input);
+                _ = SendLoop(Console.In, connection.Transport.Output);
 
-                    if (line == null)
-                    {
-                        break;
-                    }
-
-                    await connection.SendAsync(Encoding.UTF8.GetBytes(line), cts.Token);
-                }
+                await shutdown.Task;
             }
             catch (AggregateException aex) when (aex.InnerExceptions.All(e => e is OperationCanceledException))
             {
@@ -80,6 +63,41 @@ namespace ClientSample
                 await connection.DisposeAsync();
             }
             return 0;
+        }
+
+        private static async Task ReceiveLoop(TextWriter output, PipeReader input)
+        {
+            while (true)
+            {
+                var result = await input.ReadAsync();
+                var buffer = result.Buffer;
+
+                try
+                {
+                    if (!buffer.IsEmpty)
+                    {
+                        await output.WriteLineAsync(Encoding.UTF8.GetString(buffer.ToArray()));
+                    }
+                    else if (result.IsCompleted)
+                    {
+                        // No more data, and the pipe is complete
+                        break;
+                    }
+                }
+                finally
+                {
+                    input.AdvanceTo(buffer.End);
+                }
+            }
+        }
+
+        private static async Task SendLoop(TextReader input, PipeWriter output)
+        {
+            while (true)
+            {
+                var result = await input.ReadLineAsync();
+                await output.WriteAsync(Encoding.UTF8.GetBytes(result));
+            }
         }
     }
 }

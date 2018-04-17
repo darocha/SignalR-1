@@ -1,25 +1,28 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <Import Project="..\..\build\common.props" />
-
   <PropertyGroup>
     <Description>Common serialiation primitives for SignalR Clients Servers</Description>
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <PackageTags>aspnetcore;signalr</PackageTags>
-    <EnableApiCheck>false</EnableApiCheck>
+    <TargetFrameworks>netstandard2.0;netcoreapp2.1</TargetFrameworks>
     <RootNamespace>Microsoft.AspNetCore.SignalR</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="$(JsonNetVersion)" />
-    <PackageReference Include="MsgPack.Cli" Version="$(MsgPackVersion)" />
-    <PackageReference Include="System.Binary" Version="$(CoreFxLabsVersion)" />
-    <PackageReference Include="System.Buffers.Primitives" Version="$(CoreFxLabsVersion)" />
-    <PackageReference Include="System.Memory" Version="$(CoreFxVersion)" />
-    <PackageReference Include="System.Numerics.Vectors" Version="$(CoreFxVersion)" />
-    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="$(CoreFxVersion)" />
+    <Compile Include="..\Common\JsonUtils.cs" Link="Internal\JsonUtils.cs" />
+    <Compile Include="..\Common\MemoryBufferWriter.cs" Link="Internal\MemoryBufferWriter.cs" />
+    <Compile Include="..\Common\TextMessageFormatter.cs" Link="Internal\TextMessageFormatter.cs" />
+    <Compile Include="..\Common\TextMessageParser.cs" Link="Internal\TextMessageParser.cs" />
+    <Compile Include="..\Common\Utf8BufferTextReader.cs" Link="Internal\Utf8BufferTextReader.cs" />
+    <Compile Include="..\Common\Utf8BufferTextWriter.cs" Link="Internal\Utf8BufferTextWriter.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="$(NewtonsoftJsonPackageVersion)" />
+    <PackageReference Include="System.Memory" Version="$(SystemMemoryPackageVersion)" />
+    <PackageReference Include="System.Buffers" Version="$(SystemBuffersPackageVersion)" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="$(SystemRuntimeCompilerServicesUnsafePackageVersion)" />
+    <PackageReference Include="Microsoft.AspNetCore.Connections.Abstractions" Version="$(MicrosoftAspNetCoreConnectionsAbstractionsPackageVersion)" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="$(MicrosoftExtensionsOptionsPackageVersion)" />
   </ItemGroup>
 
 </Project>

@@ -22,23 +22,23 @@ namespace SocialWeather.Pipe
 
             var tokens = line.Split('|');
             int temperature;
-            long reportTime = long.MinValue;
-            Weather weather = (Weather)(-1);
-            string zipCode = tokens.Length > 3 ? tokens[3] : string.Empty;
+            var reportTime = long.MinValue;
+            var weather = (Weather)(-1);
+            var zipCode = tokens.Length > 3 ? tokens[3] : string.Empty;
 
             if (tokens.Length == 0 || !int.TryParse(tokens[0], out temperature))
             {
                 temperature = int.MinValue;
             }
 
-            if (tokens.Length < 2 || !long.TryParse(tokens[1], out reportTime))
-            {
-                temperature = int.MinValue;
-            }
-
-            if (tokens.Length < 3 || !Enum.TryParse<Weather>(tokens[2], out weather))
+            if (tokens.Length < 2 || !Enum.TryParse<Weather>(tokens[1], out weather))
             {
                 weather = (Weather)(-1);
+            }
+
+            if (tokens.Length < 3 || !long.TryParse(tokens[2], out reportTime))
+            {
+                reportTime = int.MinValue;
             }
 
             return new WeatherReport
@@ -55,7 +55,7 @@ namespace SocialWeather.Pipe
             var sw = new StreamWriter(stream);
             var line = $"{report.Temperature}|{report.ReportTime}|{(int)report.Weather}|{report.ZipCode ?? string.Empty}";
 
-            Encoding utf8 = Encoding.UTF8;
+            var utf8 = Encoding.UTF8;
             var encodedBytes = utf8.GetBytes(line);
             var convertedBytes = Encoding.Convert(Encoding.UTF8, Encoding.ASCII, encodedBytes);
 

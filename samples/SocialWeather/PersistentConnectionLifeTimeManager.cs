@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Sockets;
+using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.Connections.Features;
+using Microsoft.AspNetCore.Http.Connections;
 
 namespace SocialWeather
 {
@@ -21,8 +23,17 @@ namespace SocialWeather
 
         public void OnConnectedAsync(ConnectionContext connection)
         {
-            connection.Metadata["groups"] = new HashSet<string>();
-            connection.Metadata["format"] = "json";
+            connection.Items["groups"] = new HashSet<string>();
+            var format = connection.GetHttpContext().Request.Query["formatType"].ToString();
+            connection.Items["format"] = format;
+            if (string.Equals(format, "protobuf", StringComparison.OrdinalIgnoreCase))
+            {
+                var transferFormatFeature = connection.Features.Get<ITransferFormatFeature>();
+                if (transferFormatFeature != null)
+                {
+                    transferFormatFeature.ActiveFormat = TransferFormat.Binary;
+                }
+            }
             _connectionList.Add(connection);
         }
 
@@ -36,11 +47,11 @@ namespace SocialWeather
             foreach (var connection in _connectionList)
             {
                 var context = connection.GetHttpContext();
-                var formatter = _formatterResolver.GetFormatter<T>((string)connection.Metadata["format"]);
+                var formatter = _formatterResolver.GetFormatter<T>((string)connection.Items["format"]);
                 var ms = new MemoryStream();
                 await formatter.WriteAsync(data, ms);
 
-                connection.Transport.Out.TryWrite(ms.ToArray());
+                await connection.Transport.Output.WriteAsync(ms.ToArray());
             }
         }
 
@@ -61,7 +72,7 @@ namespace SocialWeather
 
         public void AddGroupAsync(ConnectionContext connection, string groupName)
         {
-            var groups = (HashSet<string>)connection.Metadata["groups"];
+            var groups = (HashSet<string>)connection.Items["groups"];
             lock (groups)
             {
                 groups.Add(groupName);
@@ -70,7 +81,7 @@ namespace SocialWeather
 
         public void RemoveGroupAsync(ConnectionContext connection, string groupName)
         {
-            var groups = (HashSet<string>)connection.Metadata["groups"];
+            var groups = (HashSet<string>)connection.Items["groups"];
             if (groups != null)
             {
                 lock (groups)
